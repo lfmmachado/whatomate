@@ -23,14 +23,18 @@ anuncia o IP público como candidato ICE. Daí as duas exigências abaixo.
 
 ## Pré-requisitos na AWS (fazer antes de configurar o EasyPanel)
 
-1. **Elastic IP.** O IP atual (`3.93.191.20`) é auto-atribuído e muda em qualquer
-   stop/start. Como ele vai fixo em `calling.public_ip`, trocar de IP quebra as
-   chamadas em silêncio. Alocar um EIP e associar à instância.
-2. **Security Group**: liberar `UDP 10000-10040` a partir de `0.0.0.0/0`. Não dá
+1. **Security Group**: liberar `UDP 10000-10040` a partir de `0.0.0.0/0`. Não dá
    para restringir por origem — a mídia vem dos servidores da Meta, que não
    publicam faixa fixa. (80 e 443 TCP já devem estar abertos pelo EasyPanel.)
-3. **RDS**: o security group do RDS precisa aceitar `5432` vindo do SG da EC2.
-4. **DNS**: registro A do subdomínio → Elastic IP.
+2. **RDS**: o security group do `wgl-postgres-rds` precisa aceitar `5432` vindo
+   do SG da EC2.
+3. **DNS**: registro A de `chat.mooviin.app` → `3.93.191.20`.
+4. **Elastic IP — pendência conhecida.** Estamos usando o IP auto-atribuído
+   (`3.93.191.20`), que **muda em qualquer stop/start da instância**. Como ele
+   vai fixo em `calling.public_ip` e no DNS, um restart derruba as chamadas em
+   silêncio (mensagens seguem funcionando; o sintoma é ligação que conecta e
+   fica muda). Enquanto não houver EIP: depois de todo restart, atualizar a
+   variável `PUBLIC_IP` no painel, redeployar e corrigir o registro A.
 
 ## Banco no RDS
 
@@ -91,7 +95,7 @@ credencial do GHCR no EasyPanel, ou tornar o pacote público).
 
 Na aba de ambiente do EasyPanel. O compose referencia estas: `WHATOMATE_DOMAIN`,
 `WHATOMATE_ENCRYPTION_KEY`, `WHATOMATE_JWT_SECRET`, `RDS_HOST`, `RDS_PASSWORD`,
-`META_VERIFY_TOKEN`, `META_APP_ID`, `META_APP_SECRET`, `ELASTIC_IP`,
+`META_VERIFY_TOKEN`, `META_APP_ID`, `META_APP_SECRET`, `PUBLIC_IP`,
 `ADMIN_EMAIL`, `ADMIN_PASSWORD`.
 
 A lista abaixo é a forma expandida, caso você prefira declarar cada `WHATOMATE_*`
@@ -110,16 +114,16 @@ WHATOMATE_APP__ENCRYPTION_KEY=        # openssl rand -base64 32
 
 WHATOMATE_SERVER__HOST=0.0.0.0        # o Traefik alcança pela rede do Docker
 WHATOMATE_SERVER__PORT=8080
-WHATOMATE_SERVER__ALLOWED_ORIGINS=https://SEU.SUBDOMINIO
+WHATOMATE_SERVER__ALLOWED_ORIGINS=https://chat.mooviin.app
 
-WHATOMATE_DATABASE__HOST=SEU-RDS.us-east-1.rds.amazonaws.com
+WHATOMATE_DATABASE__HOST=wgl-postgres-rds.cwzwwdv44095.us-east-1.rds.amazonaws.com
 WHATOMATE_DATABASE__PORT=5432
 WHATOMATE_DATABASE__USER=whatomate
 WHATOMATE_DATABASE__PASSWORD=
 WHATOMATE_DATABASE__NAME=whatomate
 WHATOMATE_DATABASE__SSL_MODE=require  # RDS aceita TLS; não usar disable
 
-WHATOMATE_REDIS__HOST=                # nome do serviço Redis no EasyPanel
+WHATOMATE_REDIS__HOST=redis           # nome do serviço no compose
 WHATOMATE_REDIS__PORT=6379
 WHATOMATE_REDIS__PASSWORD=
 
@@ -146,7 +150,7 @@ WHATOMATE_CALLING__TRANSFER_TIMEOUT_SECS=120
 WHATOMATE_CALLING__RECORDING_ENABLED=false  # true exige storage S3
 WHATOMATE_CALLING__UDP_PORT_MIN=10000
 WHATOMATE_CALLING__UDP_PORT_MAX=10040
-WHATOMATE_CALLING__PUBLIC_IP=               # o Elastic IP
+WHATOMATE_CALLING__PUBLIC_IP=3.93.191.20    # IP auto-atribuído: revisar após restart
 
 WHATOMATE_DEFAULT_ADMIN__EMAIL=
 WHATOMATE_DEFAULT_ADMIN__PASSWORD=          # trocar no primeiro login
@@ -172,14 +176,14 @@ Rollback: apontar o serviço para `ghcr.io/lfmmachado/whatomate:<sha-anterior>`.
 ## Verificação
 
 ```bash
-curl -sf https://SEU.SUBDOMINIO/ready && echo OK   # checa banco e Redis
+curl -sf https://chat.mooviin.app/ready && echo OK   # checa banco e Redis
 docker ps --filter name=whatomate
 docker logs -f $(docker ps -qf name=whatomate)
 ```
 
 Nos logs de uma chamada, os candidatos ICE aparecem com tipo e endereço
 ([webrtc.go:314](../internal/calling/webrtc.go:314)) — se o `address` do candidato
-`host` for `172.31.x.x` em vez do Elastic IP, o `public_ip` não pegou.
+`host` for `172.31.x.x` em vez do IP público, o `public_ip` não pegou.
 
 ## Sincronizar com o upstream
 

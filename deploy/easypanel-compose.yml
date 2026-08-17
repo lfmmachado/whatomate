@@ -229,9 +229,13 @@ services:
       WHATOMATE_CALLING__RECORDING_ENABLED: "false"
       WHATOMATE_CALLING__UDP_PORT_MIN: "10000"
       WHATOMATE_CALLING__UDP_PORT_MAX: "10040"
-      # Elastic IP. Se ficar vazio ou desatualizado, o ICE anuncia 172.31.x.x
-      # e nenhuma chamada conecta.
-      WHATOMATE_CALLING__PUBLIC_IP: ${ELASTIC_IP}
+      # IP público da instância. Se ficar vazio ou desatualizado, o ICE anuncia
+      # 172.31.21.234 e nenhuma chamada conecta.
+      # ATENÇÃO: hoje isto é o IP auto-atribuído (3.93.191.20), não um Elastic
+      # IP — ele MUDA em qualquer stop/start da EC2. Depois de um restart da
+      # instância, atualizar esta variável no painel e redeployar, ou alocar um
+      # EIP e esquecer o assunto.
+      WHATOMATE_CALLING__PUBLIC_IP: ${PUBLIC_IP}
 
       WHATOMATE_DEFAULT_ADMIN__EMAIL: ${ADMIN_EMAIL}
       WHATOMATE_DEFAULT_ADMIN__PASSWORD: ${ADMIN_PASSWORD}
