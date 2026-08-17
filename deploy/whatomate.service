@@ -1,0 +1,23 @@
+[Unit]
+Description=Whatomate WhatsApp Platform
+After=network-online.target postgresql.service redis-server.service
+Wants=network-online.target
+
+[Service]
+User=deploy
+WorkingDirectory=/opt/whatomate
+# -migrate é idempotente: mantê-lo aqui evita um passo manual a cada release
+ExecStart=/opt/whatomate/whatomate server -config /opt/whatomate/config.toml -migrate
+Restart=always
+RestartSec=3
+LimitNOFILE=65536
+
+# Hardening básico (mantém acesso a /opt/whatomate para uploads/audio)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/whatomate
+
+[Install]
+WantedBy=multi-user.target

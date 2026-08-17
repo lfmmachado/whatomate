@@ -1,0 +1,97 @@
+name: Deploy
+
+# Só faz deploy depois que o workflow "Test" (upstream) passa em main.
+# Assim não duplicamos a matriz de testes com Postgres/Redis aqui.
+on:
+  workflow_run:
+    workflows: ["Test"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout the tested commit
+        uses: actions/checkout@v4
+        with:
+          # workflow_run não carrega o SHA testado automaticamente
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          fetch-depth: 0 # o Makefile usa git describe para a versão
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+
+      - name: Build production binary (frontend embutido)
+        run: make build-prod
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.VPS_HOST }}" >> ~/.ssh/known_hosts
+
+      - name: Upload binary
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          chmod +x whatomate
+          scp whatomate "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}:/opt/whatomate/releases/whatomate-${SHA}"
+
+      - name: Activate release + restart + healthcheck
+        env:
+          SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "
+            set -e
+            cd /opt/whatomate
+            cp -f whatomate whatomate.previous 2>/dev/null || true
+            install -m 0755 releases/whatomate-${SHA} whatomate
+            sudo systemctl restart whatomate
+            for i in \$(seq 1 15); do
+              if curl -sf -o /dev/null http://127.0.0.1:8080/ready; then
+                echo 'healthcheck OK'; exit 0
+              fi
+              sleep 2
+            done
+            echo 'healthcheck FALHOU'; journalctl -u whatomate -n 40 --no-pager || true; exit 1
+          "
+
+      - name: Limpar releases antigas (mantém as 5 últimas)
+        if: success()
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "
+            cd /opt/whatomate/releases && ls -t | tail -n +6 | xargs -r rm --
+          "
+
+      - name: Rollback em caso de falha
+        if: failure()
+        run: |
+          ssh "${{ secrets.VPS_USER }}@${{ secrets.VPS_HOST }}" "
+            cd /opt/whatomate
+            [ -f whatomate.previous ] || { echo 'sem versão anterior para rollback'; exit 0; }
+            cp -f whatomate.previous whatomate
+            sudo systemctl restart whatomate
+          " || true

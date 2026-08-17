@@ -1,0 +1,82 @@
+# Template do /opt/whatomate/config.toml (produção).
+# NUNCA commitar o arquivo preenchido — config.toml já está no .gitignore.
+# Guardar os segredos gerados no cofre (1Password/Bitwarden).
+
+[app]
+name = "Whatomate"
+environment = "production"
+debug = false
+# openssl rand -base64 32  → perder essa chave = perder os tokens Meta salvos
+encryption_key = "GERAR_32+_CHARS"
+
+[server]
+host = "127.0.0.1"          # só o Caddy fala com o app
+port = 8080
+read_timeout = 30
+write_timeout = 30
+allowed_origins = "https://crm.SEUDOMINIO.com.br"
+
+[database]
+host = "localhost"
+port = 5432
+user = "whatomate"
+password = "SENHA_DO_POSTGRES"
+name = "whatomate"
+ssl_mode = "disable"
+
+[redis]
+host = "localhost"
+port = 6379
+
+[jwt]
+secret = "GERAR_OUTRA_32+_CHARS"
+access_expiry_mins = 15
+refresh_expiry_days = 1
+
+[storage]
+type = "local"
+local_path = "/opt/whatomate/uploads"
+
+[whatsapp]
+webhook_verify_token = "GERAR_TOKEN_ALEATORIO"   # mesmo valor no painel da Meta
+api_version = "v24.0"
+base_url = "https://graph.facebook.com"
+app_id = "APP_ID_DO_APP_META"
+app_secret = "APP_SECRET_DO_APP_META"            # valida a assinatura do webhook
+
+[cookie]
+domain = ""
+secure = true    # já é forçado com environment = "production", explícito por clareza
+
+[rate_limit]
+enabled = true
+trust_proxy = true   # obrigatório atrás do Caddy, senão todo mundo conta como 127.0.0.1
+window_seconds = 60
+api_max_requests = 200
+
+[tts]
+piper_binary = "/usr/local/bin/piper"
+piper_model = "/opt/piper/models/pt_BR-faber-medium.onnx"
+opusenc_binary = "opusenc"
+
+[calling]
+max_call_duration = 3600
+audio_dir = "/opt/whatomate/audio"
+transfer_timeout_secs = 120
+recording_enabled = false     # true exige [storage] type = "s3"
+udp_port_min = 10000
+udp_port_max = 10100
+public_ip = "IP_PUBLICO_DA_VPS"
+
+[[calling.ice_servers]]
+urls = ["stun:stun.l.google.com:19302"]
+
+# Se houver áudio mudo atrás de NAT de operadora, subir coturn e adicionar:
+# [[calling.ice_servers]]
+# urls = ["turn:crm.SEUDOMINIO.com.br:3478"]
+# secret = "STATIC_AUTH_SECRET_DO_COTURN"
+
+[default_admin]
+email = "EMAIL_DO_USUARIO"
+password = "SENHA_INICIAL_FORTE"   # trocar no primeiro login
+full_name = "Luiz Fernando"
