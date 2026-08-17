@@ -44,24 +44,58 @@ CREATE DATABASE whatomate OWNER whatomate;
 As migrations rodam sozinhas: o `CMD` da imagem já inclui `-migrate`, que é
 idempotente.
 
+## Estado da máquina (medido em 17/08/2026)
+
+`docker=28.4.0`, `swarm=active`, Traefik 3.6.7. Já rodam ali Chatwoot (+sidekiq),
+n8n, Evolution API, ePolítico (api+web), um pgbouncer e um `wgl_redis`.
+
+RAM: 3,8 Gi totais, ~600 Mi disponíveis, **swap zero**. Antes de subir qualquer
+coisa, criar 4 GB de swap — o IVR gera áudio invocando `piper`, `ffmpeg` e
+`opusenc` como processos filhos, e esses picos acionariam o OOM killer contra os
+outros apps:
+
+```bash
+fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+sysctl -w vm.swappiness=10 && echo 'vm.swappiness=10' > /etc/sysctl.d/99-swappiness.conf
+```
+
+O `deploy.resources.limits.memory` do compose (1 G para o app, 192 M para o
+Redis) é a segunda camada dessa proteção: limita o estrago ao próprio serviço.
+
+> `wgl_redis` está escutando em `0.0.0.0:6379`. Não é do Whatomate — mas vale
+> conferir se o security group expõe essa porta para a internet.
+
 ## Serviço no EasyPanel
+
+Usar o tipo **Compose**, com o conteúdo de
+[`easypanel-compose.yml`](easypanel-compose.yml). Ele define o app e o Redis
+dedicado.
+
+O motivo de não usar a tela padrão de serviço: o range UDP precisa ser publicado
+em `mode: host`. No modo ingress (padrão do Swarm) o IPVS faz SNAT nos pacotes, o
+container vê um endereço de origem mascarado e o ICE falha — a chamada conecta e
+fica muda. E como o Swarm não aceita range na sintaxe longa, são 41 entradas de
+porta, uma por vez.
 
 **Imagem**: `ghcr.io/lfmmachado/whatomate:latest` (pacote privado → cadastrar
 credencial do GHCR no EasyPanel, ou tornar o pacote público).
 
-**Domínio**: o subdomínio, porta interna `8080`, TLS pelo EasyPanel.
-
-**Portas publicadas** (além do HTTP): `10000-10040` UDP, **modo host**. Publicar
-range em modo ingress do Swarm cria uma regra de iptables por porta e degrada;
-host mode entrega o pacote direto no container.
-
-**Volumes**: `/app/uploads` e `/app/audio` persistentes — o segundo guarda os
-áudios de IVR gerados pelo TTS.
+**Domínio**: configurar no painel apontando para a porta `8080` do serviço
+`whatomate`; o TLS é do EasyPanel.
 
 **File mount**: o conteúdo de [`config.mount.toml`](config.mount.toml) em
-`/app/config.toml`.
+`/app/config.toml` (o caminho do host já está referenciado no compose).
 
 ### Variáveis de ambiente
+
+Na aba de ambiente do EasyPanel. O compose referencia estas: `WHATOMATE_DOMAIN`,
+`WHATOMATE_ENCRYPTION_KEY`, `WHATOMATE_JWT_SECRET`, `RDS_HOST`, `RDS_PASSWORD`,
+`META_VERIFY_TOKEN`, `META_APP_ID`, `META_APP_SECRET`, `ELASTIC_IP`,
+`ADMIN_EMAIL`, `ADMIN_PASSWORD`.
+
+A lista abaixo é a forma expandida, caso você prefira declarar cada `WHATOMATE_*`
+diretamente em vez de usar o compose:
 
 O app aceita tudo por env com prefixo `WHATOMATE_` e `__` separando a seção
 ([config.go:210](../internal/config/config.go:210)). O arquivo é lido primeiro e
