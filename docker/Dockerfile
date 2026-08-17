@@ -56,6 +56,13 @@ RUN mkdir -p /tmp/piper-models \
     && wget -q https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/lessac/medium/en_US-lessac-medium.onnx.json \
        -O /tmp/piper-models/en_US-lessac-medium.onnx.json
 
+# Fork customization: Brazilian Portuguese voice for the IVR (~60MB).
+# Point [tts] piper_model at /opt/piper/models/pt_BR-faber-medium.onnx to use it.
+RUN wget -q https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx \
+       -O /tmp/piper-models/pt_BR-faber-medium.onnx \
+    && wget -q https://huggingface.co/rhasspy/piper-voices/resolve/main/pt/pt_BR/faber/medium/pt_BR-faber-medium.onnx.json \
+       -O /tmp/piper-models/pt_BR-faber-medium.onnx.json
+
 # Final stage (Debian for glibc — required by Piper TTS)
 FROM debian:bookworm-slim
 
