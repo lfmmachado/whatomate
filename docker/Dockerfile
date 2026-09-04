@@ -70,7 +70,7 @@ WORKDIR /app
 
 # Install runtime dependencies (TTS: espeak-ng, opus-tools; transcoding: ffmpeg)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates tzdata espeak-ng opus-tools ffmpeg \
+    ca-certificates tzdata espeak-ng opus-tools ffmpeg curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy binary from builder

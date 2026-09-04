@@ -17,6 +17,13 @@ services:
   whatomate:
     image: ghcr.io/lfmmachado/whatomate:latest
     restart: unless-stopped
+    # `default` é a rede do projeto, por onde se fala com o Redis.
+    # `easypanel` é a rede overlay do Traefik: sem ela o proxy resolve o nome do
+    # container mas não alcança ninguém, e toda requisição volta 502.
+    # Declarar `networks` desliga a adesão automática à default — daí as duas.
+    networks:
+      - default
+      - easypanel
     ports:
       - target: 10000
         published: 10000
@@ -249,8 +256,11 @@ services:
       - /etc/easypanel/projects/whatomate/config.toml:/app/config.toml:ro
 
     healthcheck:
-      # /ready valida banco e Redis; /health só responde que o processo subiu
-      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ready || exit 1"]
+      # A imagem não traz curl nem wget, então /dev/tcp do bash é o que resta.
+      # Testa só a porta — não banco e Redis, como o /ready faria. Assim que uma
+      # imagem com curl estiver publicada, trocar por:
+      #   test: ["CMD", "curl", "-sf", "http://127.0.0.1:8080/ready"]
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080"]
       interval: 30s
       timeout: 5s
       retries: 3
@@ -288,3 +298,9 @@ volumes:
   whatomate-uploads:
   whatomate-audio:
   whatomate-redis-data:
+
+networks:
+  # criada e mantida pelo EasyPanel; overlay com attachable=true, o que permite
+  # um container de compose comum entrar nela
+  easypanel:
+    external: true
