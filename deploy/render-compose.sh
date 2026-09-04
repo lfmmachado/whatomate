@@ -54,7 +54,9 @@ text = re.sub(r"\$\{([A-Z0-9_]+)\}", sub, text)
 # Chaves do compose (image, ports, mode...) são minúsculas e ficam intactas.
 def quote(m):
     indent, key, val = m.group(1), m.group(2), m.group(3).rstrip()
-    if val.startswith(('"', "'")) or val == "":
+    if val == "":
+        return '%s%s: ""' % (indent, key)   # vazio explícito, não YAML null
+    if val.startswith(('"', "'")):
         return m.group(0)
     return '%s%s: "%s"' % (indent, key, val.replace('"', '\\"'))
 
