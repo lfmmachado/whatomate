@@ -60,3 +60,7 @@ test-results/
 
 # Docker 
 docker/.env
+
+# Compose renderizado com segredos e o env local que o alimenta
+deploy/.env.local
+deploy/easypanel-compose.local.yml
