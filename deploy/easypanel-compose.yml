@@ -1,0 +1,290 @@
+# Serviço Compose do Whatomate no EasyPanel (Docker Swarm).
+#
+# Por que Compose e não a tela padrão de serviço: o range UDP da mídia precisa
+# ser publicado em `mode: host`. No modo ingress (padrão do Swarm) o IPVS faz
+# SNAT nos pacotes, o container passa a ver um endereço de origem mascarado e as
+# verificações de conectividade do ICE falham — a chamada conecta e fica muda.
+#
+# O Swarm não aceita range ("10000-10040:10000-10040/udp") na sintaxe longa, e a
+# sintaxe curta só produz ingress. Daí uma entrada por porta, geradas abaixo.
+# 41 portas ≈ 20 chamadas simultâneas (cada chamada abre ~2 PeerConnections:
+# uma para a Meta, outra para o navegador do agente).
+#
+# Segredos NÃO ficam aqui: as ${VARIAVEIS} são preenchidas na aba de ambiente do
+# EasyPanel. A lista completa está no README desta pasta.
+
+services:
+  whatomate:
+    image: ghcr.io/lfmmachado/whatomate:latest
+    restart: unless-stopped
+    ports:
+      - target: 10000
+        published: 10000
+        protocol: udp
+        mode: host
+      - target: 10001
+        published: 10001
+        protocol: udp
+        mode: host
+      - target: 10002
+        published: 10002
+        protocol: udp
+        mode: host
+      - target: 10003
+        published: 10003
+        protocol: udp
+        mode: host
+      - target: 10004
+        published: 10004
+        protocol: udp
+        mode: host
+      - target: 10005
+        published: 10005
+        protocol: udp
+        mode: host
+      - target: 10006
+        published: 10006
+        protocol: udp
+        mode: host
+      - target: 10007
+        published: 10007
+        protocol: udp
+        mode: host
+      - target: 10008
+        published: 10008
+        protocol: udp
+        mode: host
+      - target: 10009
+        published: 10009
+        protocol: udp
+        mode: host
+      - target: 10010
+        published: 10010
+        protocol: udp
+        mode: host
+      - target: 10011
+        published: 10011
+        protocol: udp
+        mode: host
+      - target: 10012
+        published: 10012
+        protocol: udp
+        mode: host
+      - target: 10013
+        published: 10013
+        protocol: udp
+        mode: host
+      - target: 10014
+        published: 10014
+        protocol: udp
+        mode: host
+      - target: 10015
+        published: 10015
+        protocol: udp
+        mode: host
+      - target: 10016
+        published: 10016
+        protocol: udp
+        mode: host
+      - target: 10017
+        published: 10017
+        protocol: udp
+        mode: host
+      - target: 10018
+        published: 10018
+        protocol: udp
+        mode: host
+      - target: 10019
+        published: 10019
+        protocol: udp
+        mode: host
+      - target: 10020
+        published: 10020
+        protocol: udp
+        mode: host
+      - target: 10021
+        published: 10021
+        protocol: udp
+        mode: host
+      - target: 10022
+        published: 10022
+        protocol: udp
+        mode: host
+      - target: 10023
+        published: 10023
+        protocol: udp
+        mode: host
+      - target: 10024
+        published: 10024
+        protocol: udp
+        mode: host
+      - target: 10025
+        published: 10025
+        protocol: udp
+        mode: host
+      - target: 10026
+        published: 10026
+        protocol: udp
+        mode: host
+      - target: 10027
+        published: 10027
+        protocol: udp
+        mode: host
+      - target: 10028
+        published: 10028
+        protocol: udp
+        mode: host
+      - target: 10029
+        published: 10029
+        protocol: udp
+        mode: host
+      - target: 10030
+        published: 10030
+        protocol: udp
+        mode: host
+      - target: 10031
+        published: 10031
+        protocol: udp
+        mode: host
+      - target: 10032
+        published: 10032
+        protocol: udp
+        mode: host
+      - target: 10033
+        published: 10033
+        protocol: udp
+        mode: host
+      - target: 10034
+        published: 10034
+        protocol: udp
+        mode: host
+      - target: 10035
+        published: 10035
+        protocol: udp
+        mode: host
+      - target: 10036
+        published: 10036
+        protocol: udp
+        mode: host
+      - target: 10037
+        published: 10037
+        protocol: udp
+        mode: host
+      - target: 10038
+        published: 10038
+        protocol: udp
+        mode: host
+      - target: 10039
+        published: 10039
+        protocol: udp
+        mode: host
+      - target: 10040
+        published: 10040
+        protocol: udp
+        mode: host
+    environment:
+      TZ: America/Sao_Paulo
+
+      WHATOMATE_APP__ENVIRONMENT: production
+      WHATOMATE_APP__DEBUG: "false"
+      WHATOMATE_APP__ENCRYPTION_KEY: ${WHATOMATE_ENCRYPTION_KEY}
+
+      WHATOMATE_SERVER__HOST: 0.0.0.0
+      WHATOMATE_SERVER__PORT: "8080"
+      WHATOMATE_SERVER__ALLOWED_ORIGINS: https://${WHATOMATE_DOMAIN}
+
+      # RDS direto, sem passar pelo pgbouncer: o app usa pgx, e pgbouncer em
+      # modo transaction quebra prepared statements sob concorrência.
+      WHATOMATE_DATABASE__HOST: ${RDS_HOST}
+      WHATOMATE_DATABASE__PORT: "5432"
+      WHATOMATE_DATABASE__USER: whatomate
+      WHATOMATE_DATABASE__PASSWORD: ${RDS_PASSWORD}
+      WHATOMATE_DATABASE__NAME: whatomate
+      WHATOMATE_DATABASE__SSL_MODE: require
+
+      WHATOMATE_REDIS__HOST: redis
+      WHATOMATE_REDIS__PORT: "6379"
+
+      WHATOMATE_JWT__SECRET: ${WHATOMATE_JWT_SECRET}
+
+      WHATOMATE_STORAGE__TYPE: local
+      WHATOMATE_STORAGE__LOCAL_PATH: /app/uploads
+
+      WHATOMATE_WHATSAPP__WEBHOOK_VERIFY_TOKEN: ${META_VERIFY_TOKEN}
+      WHATOMATE_WHATSAPP__API_VERSION: v24.0
+      WHATOMATE_WHATSAPP__APP_ID: ${META_APP_ID}
+      WHATOMATE_WHATSAPP__APP_SECRET: ${META_APP_SECRET}
+
+      WHATOMATE_COOKIE__SECURE: "true"
+      WHATOMATE_RATE_LIMIT__ENABLED: "true"
+      # atrás do Traefik: sem isso todo request conta como vindo do proxy
+      WHATOMATE_RATE_LIMIT__TRUST_PROXY: "true"
+
+      WHATOMATE_TTS__PIPER_BINARY: /usr/local/bin/piper
+      WHATOMATE_TTS__PIPER_MODEL: /opt/piper/models/pt_BR-faber-medium.onnx
+
+      WHATOMATE_CALLING__AUDIO_DIR: /app/audio
+      WHATOMATE_CALLING__MAX_CALL_DURATION: "3600"
+      WHATOMATE_CALLING__TRANSFER_TIMEOUT_SECS: "120"
+      WHATOMATE_CALLING__RECORDING_ENABLED: "false"
+      WHATOMATE_CALLING__UDP_PORT_MIN: "10000"
+      WHATOMATE_CALLING__UDP_PORT_MAX: "10040"
+      # IP público da instância. Se ficar vazio ou desatualizado, o ICE anuncia
+      # 172.31.21.234 e nenhuma chamada conecta.
+      # ATENÇÃO: hoje isto é o IP auto-atribuído (3.93.191.20), não um Elastic
+      # IP — ele MUDA em qualquer stop/start da EC2. Depois de um restart da
+      # instância, atualizar esta variável no painel e redeployar, ou alocar um
+      # EIP e esquecer o assunto.
+      WHATOMATE_CALLING__PUBLIC_IP: ${PUBLIC_IP}
+
+      WHATOMATE_DEFAULT_ADMIN__EMAIL: ${ADMIN_EMAIL}
+      WHATOMATE_DEFAULT_ADMIN__PASSWORD: ${ADMIN_PASSWORD}
+      WHATOMATE_DEFAULT_ADMIN__FULL_NAME: Luiz Fernando
+
+    volumes:
+      - uploads:/app/uploads
+      - audio:/app/audio
+      # Conteúdo de deploy/config.mount.toml, criado como File Mount no painel.
+      # Só carrega o [[calling.ice_servers]], que não cabe em env var.
+      - /etc/easypanel/projects/whatomate/config.toml:/app/config.toml:ro
+
+    healthcheck:
+      # /ready valida banco e Redis; /health só responde que o processo subiu
+      test: ["CMD-SHELL", "curl -sf http://127.0.0.1:8080/ready || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s
+
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          # teto para o pico do TTS (piper + ffmpeg + opusenc) não derrubar
+          # Chatwoot/n8n na mesma máquina
+          memory: 1G
+      restart_policy:
+        condition: any
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # sem `ports`: só a rede interna do projeto alcança
+    command: >-
+      redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+
+volumes:
+  uploads:
+  audio:
+  redis-data:

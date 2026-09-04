@@ -1,0 +1,17 @@
+# Arquivo montado em /app/config.toml no serviço do EasyPanel.
+# Contém APENAS o que não dá para expressar em variável de ambiente:
+# [[calling.ice_servers]] é uma lista de tabelas, e o provider de env do koanf
+# (config.go:210) não consegue montar isso a partir de WHATOMATE_*.
+#
+# Todo o resto — segredos, banco, Redis, Meta — entra como env var no painel,
+# que é carregada DEPOIS do arquivo e sobrescreve o que estiver aqui.
+# NÃO colocar segredo nenhum neste arquivo: ele vive no git.
+
+[app]
+name = "Whatomate"
+
+# STUN público: suficiente porque o servidor anuncia o Elastic IP como candidato
+# host (via calling.public_ip). Se aparecer áudio mudo atrás de NAT de operadora,
+# subir um coturn e acrescentar um segundo bloco com turn: + secret.
+[[calling.ice_servers]]
+urls = ["stun:stun.l.google.com:19302"]
