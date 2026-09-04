@@ -48,11 +48,11 @@ relay é o coturn, pela diretiva `external-ip`.
    do SG da EC2.
 3. **DNS**: registro A de `chat.mooviin.app` → `3.93.191.20`.
 4. **Elastic IP — pendência conhecida.** Estamos usando o IP auto-atribuído
-   (`3.93.191.20`), que **muda em qualquer stop/start da instância**. Como ele
-   vai fixo em `calling.public_ip` e no DNS, um restart derruba as chamadas em
-   silêncio (mensagens seguem funcionando; o sintoma é ligação que conecta e
-   fica muda). Enquanto não houver EIP: depois de todo restart, atualizar a
-   variável `PUBLIC_IP` no painel, redeployar e corrigir o registro A.
+   (`3.93.191.20`), que **muda em qualquer stop/start da instância**. Ele está
+   fixo no `external-ip` do `turnserver.conf` e no registro A, então um restart
+   derruba as chamadas em silêncio: mensagens seguem funcionando e o sintoma é
+   ligação que conecta muda. Enquanto não houver EIP, todo restart exige editar
+   o `turnserver.conf`, reiniciar o coturn e corrigir o DNS.
 
 ## Banco no RDS
 
@@ -94,11 +94,8 @@ Usar o tipo **Compose**, com o conteúdo de
 [`easypanel-compose.yml`](easypanel-compose.yml). Ele define o app e o Redis
 dedicado.
 
-O motivo de não usar a tela padrão de serviço: o range UDP precisa ser publicado
-em `mode: host`. No modo ingress (padrão do Swarm) o IPVS faz SNAT nos pacotes, o
-container vê um endereço de origem mascarado e o ICE falha — a chamada conecta e
-fica muda. E como o Swarm não aceita range na sintaxe longa, são 41 entradas de
-porta, uma por vez.
+O tipo Compose é necessário porque o coturn precisa de `network_mode: host`, que
+a tela padrão de serviço não oferece. O app em si não publica porta alguma.
 
 **Imagem**: `ghcr.io/lfmmachado/whatomate:latest` (pacote privado → cadastrar
 credencial do GHCR no EasyPanel, ou tornar o pacote público).
@@ -148,7 +145,7 @@ WHATOMATE_DATABASE__PASSWORD=
 WHATOMATE_DATABASE__NAME=whatomate
 WHATOMATE_DATABASE__SSL_MODE=require  # RDS aceita TLS; não usar disable
 
-WHATOMATE_REDIS__HOST=redis           # nome do serviço no compose
+WHATOMATE_REDIS__HOST=whatomate-redis # nome do serviço no compose
 WHATOMATE_REDIS__PORT=6379
 WHATOMATE_REDIS__PASSWORD=
 
@@ -173,9 +170,8 @@ WHATOMATE_CALLING__AUDIO_DIR=/app/audio
 WHATOMATE_CALLING__MAX_CALL_DURATION=3600
 WHATOMATE_CALLING__TRANSFER_TIMEOUT_SECS=120
 WHATOMATE_CALLING__RECORDING_ENABLED=false  # true exige storage S3
-WHATOMATE_CALLING__UDP_PORT_MIN=10000
-WHATOMATE_CALLING__UDP_PORT_MAX=10040
-WHATOMATE_CALLING__PUBLIC_IP=3.93.191.20    # IP auto-atribuído: revisar após restart
+WHATOMATE_CALLING__RELAY_ONLY=true          # toda a mídia pelo coturn
+WHATOMATE_CALLING__PUBLIC_IP=               # vazio: conflita com relay_only
 
 WHATOMATE_DEFAULT_ADMIN__EMAIL=
 WHATOMATE_DEFAULT_ADMIN__PASSWORD=          # trocar no primeiro login
