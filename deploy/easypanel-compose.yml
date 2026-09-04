@@ -21,9 +21,17 @@ services:
     # `easypanel` é a rede overlay do Traefik: sem ela o proxy resolve o nome do
     # container mas não alcança ninguém, e toda requisição volta 502.
     # Declarar `networks` desliga a adesão automática à default — daí as duas.
+    #
+    # O alias existe porque o EasyPanel gera o destino do Traefik como
+    # <projeto>_<serviço>_<sub-serviço> — aqui `mooviin_whatomate_whatomate`,
+    # com underscores. Os aliases que o compose cria sozinho usam hífen
+    # (`mooviin_whatomate-whatomate-1`) ou são só o nome do serviço
+    # (`whatomate`), então aquele nome não resolveria e o proxy segue em 502.
     networks:
-      - default
-      - easypanel
+      default:
+      easypanel:
+        aliases:
+          - mooviin_whatomate_whatomate
     ports:
       - target: 10000
         published: 10000
