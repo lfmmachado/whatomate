@@ -11,21 +11,39 @@ GitHub Actions  --build--> ghcr.io/lfmmachado/whatomate:latest
                                     |
                         webhook de deploy do EasyPanel (pull + restart)
                                     |
-Internet --443/tcp--> Traefik (EasyPanel, TLS) --> app:8080
-         --10000-10040/udp--------------------->  mídia WebRTC (direto no container)
+Internet --443/tcp--> Traefik (EasyPanel, TLS) --> app:8080   [rede overlay]
                                     |
                         RDS Postgres (externo)  +  Redis (serviço EasyPanel)
+
+Meta --3478 + 49160-49200/udp--> coturn [network_mode: host] <--> app
 ```
 
-O Traefik só trata HTTP. A mídia das chamadas **não passa por ele**: o binário
-abre portas UDP próprias ([webrtc.go:282](../internal/calling/webrtc.go:282)) e
-anuncia o IP público como candidato ICE. Daí as duas exigências abaixo.
+O Traefik só trata HTTP, e a mídia das chamadas não passa por ele.
+
+**A mídia também não passa pelo container do app.** Tentamos isso primeiro,
+publicando 41 portas UDP, e não funciona: o ICE conecta mas o DTLS nunca fecha,
+e a chamada fica muda. Duas causas concorrem. O container do app precisa estar
+em duas redes (a do projeto, para o Redis, e a overlay, para o Traefik), o que
+gera dois candidatos `host` mascarados como o mesmo IP público — o ICE pode
+fixar no socket errado. E o NAT do Docker não garante que a porta de origem da
+saída seja a mesma anunciada no candidato.
+
+Por isso o coturn: ele roda com `network_mode: host`, sem NAT nenhum no
+caminho, e o app fala com ele por conexão de saída (`relay_only = true`). O app
+deixa de precisar de qualquer porta aberta.
+
+Detalhe que morde: o app aponta para o coturn pelo **IP privado**
+(`172.31.21.234`), não pelo público. A AWS não faz hairpin de tráfego da
+instância para o próprio IP público. Quem anuncia o público nos candidatos de
+relay é o coturn, pela diretiva `external-ip`.
 
 ## Pré-requisitos na AWS (fazer antes de configurar o EasyPanel)
 
-1. **Security Group**: liberar `UDP 10000-10040` a partir de `0.0.0.0/0`. Não dá
-   para restringir por origem — a mídia vem dos servidores da Meta, que não
-   publicam faixa fixa. (80 e 443 TCP já devem estar abertos pelo EasyPanel.)
+1. **Security Group**: liberar `3478` em **TCP e UDP** e `49160-49200` em UDP,
+   a partir de `0.0.0.0/0` — são o controle e a mídia do coturn. Não dá para
+   restringir por origem: a mídia vem dos servidores da Meta, que não publicam
+   faixa fixa. (80 e 443 TCP já devem estar abertos pelo EasyPanel.)
+   A faixa `10000-10040` da tentativa anterior pode ser removida.
 2. **RDS**: o security group do `wgl-postgres-rds` precisa aceitar `5432` vindo
    do SG da EC2.
 3. **DNS**: registro A de `chat.mooviin.app` → `3.93.191.20`.
@@ -88,8 +106,15 @@ credencial do GHCR no EasyPanel, ou tornar o pacote público).
 **Domínio**: configurar no painel apontando para a porta `8080` do serviço
 `whatomate`; o TLS é do EasyPanel.
 
-**File mount**: o conteúdo de [`config.mount.toml`](config.mount.toml) em
-`/app/config.toml` (o caminho do host já está referenciado no compose).
+**Arquivos no host** (criados à mão, com os segredos reais):
+
+- `/etc/easypanel/projects/whatomate/config.toml` — de
+  [`config.mount.toml`](config.mount.toml), com o segredo do TURN
+- `/etc/easypanel/projects/whatomate/turnserver.conf` — de
+  [`coturn/turnserver.conf`](coturn/turnserver.conf), com o **mesmo** segredo
+
+Os dois precisam carregar valores idênticos em `secret` e `static-auth-secret`;
+se divergirem, o coturn recusa a alocação e a chamada volta a ficar muda.
 
 ### Variáveis de ambiente
 

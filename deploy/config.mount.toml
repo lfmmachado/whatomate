@@ -3,15 +3,21 @@
 # [[calling.ice_servers]] é uma lista de tabelas, e o provider de env do koanf
 # (config.go:210) não consegue montar isso a partir de WHATOMATE_*.
 #
-# Todo o resto — segredos, banco, Redis, Meta — entra como env var no painel,
-# que é carregada DEPOIS do arquivo e sobrescreve o que estiver aqui.
-# NÃO colocar segredo nenhum neste arquivo: ele vive no git.
+# ATENÇÃO: a versão que vive no host tem o segredo do TURN preenchido.
+# Esta, no git, tem placeholder. Não commitar a preenchida.
 
 [app]
 name = "Whatomate"
 
-# STUN público: suficiente porque o servidor anuncia o Elastic IP como candidato
-# host (via calling.public_ip). Se aparecer áudio mudo atrás de NAT de operadora,
-# subir um coturn e acrescentar um segundo bloco com turn: + secret.
+# TURN pelo coturn local. O endereço é o IP PRIVADO da EC2 de propósito: a AWS
+# não faz hairpin de tráfego da instância para o próprio IP público, então
+# apontar para 3.93.191.20 aqui simplesmente não conectaria. Quem anuncia o IP
+# público nos candidatos de relay é o coturn, via `external-ip`.
+#
+# `secret` ativa o modo use-auth-secret: o app deriva usuário e senha efêmeros
+# por HMAC (config.go:79), sem credencial fixa em lugar nenhum. Precisa ser
+# idêntico ao static-auth-secret do turnserver.conf.
 [[calling.ice_servers]]
-urls = ["stun:stun.l.google.com:19302"]
+urls = ["turn:172.31.21.234:3478"]
+secret = "COLE_O_TURN_SECRET"
+credential_ttl = 86400

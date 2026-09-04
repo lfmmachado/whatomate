@@ -1,17 +1,21 @@
-# Serviço Compose do Whatomate no EasyPanel (Docker Swarm).
+# Serviço Compose do Whatomate no EasyPanel.
 #
-# Por que Compose e não a tela padrão de serviço: o range UDP da mídia precisa
-# ser publicado em `mode: host`. No modo ingress (padrão do Swarm) o IPVS faz
-# SNAT nos pacotes, o container passa a ver um endereço de origem mascarado e as
-# verificações de conectividade do ICE falham — a chamada conecta e fica muda.
+# A mídia das chamadas NÃO passa mais pelo container do app: ele fala com o
+# coturn, que roda com `network_mode: host` e é quem conversa com a Meta.
 #
-# O Swarm não aceita range ("10000-10040:10000-10040/udp") na sintaxe longa, e a
-# sintaxe curta só produz ingress. Daí uma entrada por porta, geradas abaixo.
-# 41 portas ≈ 20 chamadas simultâneas (cada chamada abre ~2 PeerConnections:
-# uma para a Meta, outra para o navegador do agente).
+# Por que foi preciso: com o app numa rede bridge/overlay, o ICE conectava mas o
+# DTLS nunca fechava — o handshake morria e a chamada ficava muda. Duas causas
+# concorriam. O container tinha duas interfaces (rede do projeto e overlay do
+# Traefik), gerando dois candidatos `host` mascarados como o mesmo IP público,
+# e o ICE podia fixar no socket errado. E o NAT do Docker não garante que a
+# porta de origem da saída seja a mesma anunciada no candidato.
 #
-# Segredos NÃO ficam aqui: as ${VARIAVEIS} são preenchidas na aba de ambiente do
-# EasyPanel. A lista completa está no README desta pasta.
+# A tentativa anterior publicava 41 portas UDP com `mode: host`. Isso nunca
+# esteve em vigor: `mode` é campo exclusivo do Swarm e o EasyPanel roda
+# `docker compose`, que o ignora. Com relay_only o app não precisa de porta
+# aberta nenhuma — ele só faz conexão de saída para o coturn.
+#
+# Segredos NÃO ficam aqui: use deploy/render-compose.sh com deploy/.env.local.
 
 services:
   whatomate:
@@ -32,171 +36,6 @@ services:
       easypanel:
         aliases:
           - mooviin_whatomate_whatomate
-    ports:
-      - target: 10000
-        published: 10000
-        protocol: udp
-        mode: host
-      - target: 10001
-        published: 10001
-        protocol: udp
-        mode: host
-      - target: 10002
-        published: 10002
-        protocol: udp
-        mode: host
-      - target: 10003
-        published: 10003
-        protocol: udp
-        mode: host
-      - target: 10004
-        published: 10004
-        protocol: udp
-        mode: host
-      - target: 10005
-        published: 10005
-        protocol: udp
-        mode: host
-      - target: 10006
-        published: 10006
-        protocol: udp
-        mode: host
-      - target: 10007
-        published: 10007
-        protocol: udp
-        mode: host
-      - target: 10008
-        published: 10008
-        protocol: udp
-        mode: host
-      - target: 10009
-        published: 10009
-        protocol: udp
-        mode: host
-      - target: 10010
-        published: 10010
-        protocol: udp
-        mode: host
-      - target: 10011
-        published: 10011
-        protocol: udp
-        mode: host
-      - target: 10012
-        published: 10012
-        protocol: udp
-        mode: host
-      - target: 10013
-        published: 10013
-        protocol: udp
-        mode: host
-      - target: 10014
-        published: 10014
-        protocol: udp
-        mode: host
-      - target: 10015
-        published: 10015
-        protocol: udp
-        mode: host
-      - target: 10016
-        published: 10016
-        protocol: udp
-        mode: host
-      - target: 10017
-        published: 10017
-        protocol: udp
-        mode: host
-      - target: 10018
-        published: 10018
-        protocol: udp
-        mode: host
-      - target: 10019
-        published: 10019
-        protocol: udp
-        mode: host
-      - target: 10020
-        published: 10020
-        protocol: udp
-        mode: host
-      - target: 10021
-        published: 10021
-        protocol: udp
-        mode: host
-      - target: 10022
-        published: 10022
-        protocol: udp
-        mode: host
-      - target: 10023
-        published: 10023
-        protocol: udp
-        mode: host
-      - target: 10024
-        published: 10024
-        protocol: udp
-        mode: host
-      - target: 10025
-        published: 10025
-        protocol: udp
-        mode: host
-      - target: 10026
-        published: 10026
-        protocol: udp
-        mode: host
-      - target: 10027
-        published: 10027
-        protocol: udp
-        mode: host
-      - target: 10028
-        published: 10028
-        protocol: udp
-        mode: host
-      - target: 10029
-        published: 10029
-        protocol: udp
-        mode: host
-      - target: 10030
-        published: 10030
-        protocol: udp
-        mode: host
-      - target: 10031
-        published: 10031
-        protocol: udp
-        mode: host
-      - target: 10032
-        published: 10032
-        protocol: udp
-        mode: host
-      - target: 10033
-        published: 10033
-        protocol: udp
-        mode: host
-      - target: 10034
-        published: 10034
-        protocol: udp
-        mode: host
-      - target: 10035
-        published: 10035
-        protocol: udp
-        mode: host
-      - target: 10036
-        published: 10036
-        protocol: udp
-        mode: host
-      - target: 10037
-        published: 10037
-        protocol: udp
-        mode: host
-      - target: 10038
-        published: 10038
-        protocol: udp
-        mode: host
-      - target: 10039
-        published: 10039
-        protocol: udp
-        mode: host
-      - target: 10040
-        published: 10040
-        protocol: udp
-        mode: host
     environment:
       TZ: America/Sao_Paulo
 
@@ -242,15 +81,13 @@ services:
       WHATOMATE_CALLING__MAX_CALL_DURATION: "3600"
       WHATOMATE_CALLING__TRANSFER_TIMEOUT_SECS: "120"
       WHATOMATE_CALLING__RECORDING_ENABLED: "false"
-      WHATOMATE_CALLING__UDP_PORT_MIN: "10000"
-      WHATOMATE_CALLING__UDP_PORT_MAX: "10040"
-      # IP público da instância. Se ficar vazio ou desatualizado, o ICE anuncia
-      # 172.31.21.234 e nenhuma chamada conecta.
-      # ATENÇÃO: hoje isto é o IP auto-atribuído (3.93.191.20), não um Elastic
-      # IP — ele MUDA em qualquer stop/start da EC2. Depois de um restart da
-      # instância, atualizar esta variável no painel e redeployar, ou alocar um
-      # EIP e esquecer o assunto.
-      WHATOMATE_CALLING__PUBLIC_IP: ${PUBLIC_IP}
+      # Toda a mídia vai pelo coturn. Sem isto o pion também tenta candidatos
+      # host, que é justamente o caminho que não funciona aqui.
+      WHATOMATE_CALLING__RELAY_ONLY: "true"
+      # Vazio de propósito: com relay_only, definir public_ip provoca erro de
+      # negociação ICE (docs/features/calling.mdx). O IP público agora é
+      # responsabilidade do coturn, via `external-ip` no turnserver.conf.
+      WHATOMATE_CALLING__PUBLIC_IP: ""
 
       WHATOMATE_DEFAULT_ADMIN__EMAIL: ${ADMIN_EMAIL}
       WHATOMATE_DEFAULT_ADMIN__PASSWORD: ${ADMIN_PASSWORD}
@@ -283,6 +120,20 @@ services:
           memory: 1G
       restart_policy:
         condition: any
+
+  coturn:
+    image: coturn/coturn:4.6
+    restart: unless-stopped
+    # A razão de existir deste serviço: rede host = zero NAT do Docker no
+    # caminho da mídia. É o que o app não podia ter, por precisar do Traefik.
+    network_mode: host
+    volumes:
+      - /etc/easypanel/projects/whatomate/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    command: ["-c", "/etc/coturn/turnserver.conf"]
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
   whatomate-redis:
     image: redis:7-alpine
