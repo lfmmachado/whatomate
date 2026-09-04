@@ -202,7 +202,7 @@ services:
       WHATOMATE_DATABASE__NAME: whatomate
       WHATOMATE_DATABASE__SSL_MODE: require
 
-      WHATOMATE_REDIS__HOST: redis
+      WHATOMATE_REDIS__HOST: whatomate-redis
       WHATOMATE_REDIS__PORT: "6379"
 
       WHATOMATE_JWT__SECRET: ${WHATOMATE_JWT_SECRET}
@@ -242,8 +242,8 @@ services:
       WHATOMATE_DEFAULT_ADMIN__FULL_NAME: Luiz Fernando
 
     volumes:
-      - uploads:/app/uploads
-      - audio:/app/audio
+      - whatomate-uploads:/app/uploads
+      - whatomate-audio:/app/audio
       # Conteúdo de deploy/config.mount.toml, criado como File Mount no painel.
       # Só carrega o [[calling.ice_servers]], que não cabe em env var.
       - /etc/easypanel/projects/whatomate/config.toml:/app/config.toml:ro
@@ -266,14 +266,14 @@ services:
       restart_policy:
         condition: any
 
-  redis:
+  whatomate-redis:
     image: redis:7-alpine
     restart: unless-stopped
     # sem `ports`: só a rede interna do projeto alcança
     command: >-
       redis-server --appendonly yes --maxmemory 128mb --maxmemory-policy noeviction
     volumes:
-      - redis-data:/data
+      - whatomate-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -285,6 +285,6 @@ services:
           memory: 192M
 
 volumes:
-  uploads:
-  audio:
-  redis-data:
+  whatomate-uploads:
+  whatomate-audio:
+  whatomate-redis-data:
