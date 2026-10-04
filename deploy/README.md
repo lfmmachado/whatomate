@@ -4,6 +4,39 @@ Alvo: instância `i-0efb95cd982d8fcd1` (t2.medium, x86_64, Ubuntu 24.04, us-east
 com Docker + EasyPanel já em produção, **Postgres num RDS existente** e Redis novo
 criado no próprio EasyPanel.
 
+## Estado atual (04/10/2026)
+
+O que já está em produção e o que falta. Esta seção existe para que ninguém
+precise reconstruir o contexto de memória.
+
+**Funcionando:**
+
+| Peça | Valor / estado |
+|---|---|
+| App | `https://chat.mooviin.app` — TLS pelo Traefik do EasyPanel |
+| CI/CD | push em `main` → Test → Deploy → `ghcr.io/lfmmachado/whatomate` |
+| Número oficial | +55 62 98117-3298, verificado e inscrito na Cloud API |
+| Phone Number ID | `1367400226457038` |
+| WABA de produção | `26223828377295937` (nome de exibição "Mooviin App") |
+| App Meta | `MooviinApp` — `28243501641947570` |
+| Token | System User `Whatomate` (`61595121330029`), permanente, escopos de messaging + management |
+| Webhooks app↔WABA | assinados; campos `messages`, `calls`, `message_template_status_update` |
+| Mensagens | fluxo completo validado (recebe, aparece no Chat, responde) |
+| Chamadas na Meta | habilitadas no número |
+| Whatomate | org com calling ligado, team `Unique`, fluxo IVR `Main Support` |
+
+**Pendente:**
+
+- **coturn não implantado.** O compose deste repositório já traz o serviço, mas o
+  painel do EasyPanel ainda roda a versão anterior. Enquanto isso, chamadas
+  falham com ICE conectando e DTLS estourando em 15s — áudio mudo. Aplicar
+  exige: liberar `3478` tcp+udp e `49160-49200` udp no security group, criar os
+  dois arquivos no host com o mesmo segredo, e colar o compose novo.
+- **Sem Elastic IP.** O IP `3.93.191.20` é auto-atribuído e muda em stop/start.
+- **Nome de exibição em análise** na Meta — limita envio ativo, não recebimento.
+- O número de teste `+1 555 630-7921` (WABA `3623352957803820`) continua
+  existindo, mas a conta no Whatomate não aponta mais para ele.
+
 ## Arquitetura
 
 ```
