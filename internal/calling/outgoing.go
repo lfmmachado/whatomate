@@ -57,6 +57,7 @@ func (m *Manager) InitiateOutgoingCall(
 	session := &CallSession{
 		OrganizationID: orgID,
 		AccountName:    accountName,
+		WAAccount:      waAccount,
 		CallerPhone:    contactPhone,
 		ContactID:      contactID,
 		CallLogID:      callLog.ID,
@@ -91,7 +92,7 @@ func (m *Manager) InitiateOutgoingCall(
 			"call_log_id", callLog.ID,
 			"state", state.String(),
 		)
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected {
+		if peerGone(state) {
 			if session.ID != "" {
 				m.EndCall(session.ID)
 			}
@@ -165,7 +166,7 @@ func (m *Manager) InitiateOutgoingCall(
 			"call_log_id", callLog.ID,
 			"state", state.String(),
 		)
-		if state == webrtc.PeerConnectionStateFailed || state == webrtc.PeerConnectionStateDisconnected {
+		if peerGone(state) {
 			if session.ID != "" {
 				m.EndCall(session.ID)
 			}

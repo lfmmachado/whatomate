@@ -76,7 +76,14 @@ type UserSettingsRequest struct {
 	EmailNotifications bool `json:"email_notifications"`
 	NewMessageAlerts   bool `json:"new_message_alerts"`
 	CampaignUpdates    bool `json:"campaign_updates"`
+	// CallRingtone picks which sound an incoming call plays, so a call is
+	// distinguishable from a new message. Empty leaves the current choice alone.
+	CallRingtone string `json:"call_ringtone"`
 }
+
+// callRingtones are the sounds an agent can pick for incoming calls. "none"
+// leaves the toast as the only alert.
+var callRingtones = map[string]bool{"ring": true, "beep": true, "none": true}
 
 // ChangePasswordRequest represents the request body for changing password
 type ChangePasswordRequest struct {
@@ -647,8 +654,9 @@ func (a *App) GetCurrentUser(r *fastglue.Request) error {
 		return r.SendErrorEnvelope(fasthttp.StatusNotFound, "User not found", nil, "")
 	}
 
-	// Use org from JWT context (may differ from DB after org switch)
-	orgID, _ := r.RequestCtx.UserValue("organization_id").(uuid.UUID)
+	// Resolve the active org (honours X-Organization-ID); it may differ from the
+	// home org stored on the user row.
+	orgID, _ := a.getOrgID(r)
 	if orgID != uuid.Nil {
 		user.OrganizationID = orgID
 
@@ -719,10 +727,17 @@ func (a *App) UpdateCurrentUserSettings(r *fastglue.Request) error {
 
 	oldNotif := notificationSettingsSnapshot(user.Settings)
 
+	if req.CallRingtone != "" && !callRingtones[req.CallRingtone] {
+		return r.SendErrorEnvelope(fasthttp.StatusBadRequest, "Unknown call ringtone", nil, "")
+	}
+
 	// Update notification settings
 	user.Settings["email_notifications"] = req.EmailNotifications
 	user.Settings["new_message_alerts"] = req.NewMessageAlerts
 	user.Settings["campaign_updates"] = req.CampaignUpdates
+	if req.CallRingtone != "" {
+		user.Settings["call_ringtone"] = req.CallRingtone
+	}
 
 	if err := a.DB.Save(&user).Error; err != nil {
 		a.Log.Error("Failed to update user settings", "error", err)
@@ -746,6 +761,7 @@ func notificationSettingsSnapshot(settings models.JSONB) map[string]any {
 		"email_notifications": settings["email_notifications"],
 		"new_message_alerts":  settings["new_message_alerts"],
 		"campaign_updates":    settings["campaign_updates"],
+		"call_ringtone":       settings["call_ringtone"],
 	}
 }
 

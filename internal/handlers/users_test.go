@@ -55,17 +55,17 @@ func TestApp_ListUsers(t *testing.T) {
 	t.Run("empty list for new org", func(t *testing.T) {
 		app := newTestApp(t)
 		org := testutil.CreateTestOrganization(t, app.DB)
-		// Create a user in a different org so the admin has permissions
+		// ListUsers joins user_organizations, so viewing an org with no members
+		// while not being one requires a super admin — the org-switch case.
 		otherOrg := testutil.CreateTestOrganization(t, app.DB)
-		adminRole := testutil.CreateAdminRole(t, app.DB, otherOrg.ID)
-		admin := testutil.CreateTestUser(t, app.DB, otherOrg.ID,
+		superAdmin := testutil.CreateTestUser(t, app.DB, otherOrg.ID,
 			testutil.WithEmail(testutil.UniqueEmail("list-empty-admin")),
-			testutil.WithRoleID(&adminRole.ID),
+			testutil.WithSuperAdmin(),
 		)
 
 		req := testutil.NewGETRequest(t)
-		// Query for org that has no users, but auth as the admin from otherOrg
-		testutil.SetAuthContext(req, org.ID, admin.ID)
+		// Query for org that has no members, authed as a super admin from otherOrg
+		testutil.SetAuthContext(req, org.ID, superAdmin.ID)
 
 		err := app.ListUsers(req)
 		require.NoError(t, err)
@@ -79,6 +79,25 @@ func TestApp_ListUsers(t *testing.T) {
 		err = json.Unmarshal(testutil.GetResponseBody(req), &resp)
 		require.NoError(t, err)
 		assert.Empty(t, resp.Data.Users)
+	})
+
+	t.Run("forbidden for admin of another org", func(t *testing.T) {
+		app := newTestApp(t)
+		org := testutil.CreateTestOrganization(t, app.DB)
+		// Admin in otherOrg only — the role must not carry into org.
+		otherOrg := testutil.CreateTestOrganization(t, app.DB)
+		adminRole := testutil.CreateAdminRole(t, app.DB, otherOrg.ID)
+		admin := testutil.CreateTestUser(t, app.DB, otherOrg.ID,
+			testutil.WithEmail(testutil.UniqueEmail("list-foreign-admin")),
+			testutil.WithRoleID(&adminRole.ID),
+		)
+
+		req := testutil.NewGETRequest(t)
+		testutil.SetAuthContext(req, org.ID, admin.ID)
+
+		err := app.ListUsers(req)
+		require.NoError(t, err)
+		assert.Equal(t, fasthttp.StatusForbidden, testutil.GetResponseStatusCode(req))
 	})
 
 	t.Run("forbidden without users:read permission", func(t *testing.T) {
@@ -995,6 +1014,68 @@ func TestApp_UpdateCurrentUserSettings(t *testing.T) {
 		assert.Equal(t, false, dbUser.Settings["email_notifications"])
 		assert.Equal(t, true, dbUser.Settings["new_message_alerts"])
 		assert.Equal(t, true, dbUser.Settings["campaign_updates"])
+	})
+
+	t.Run("call ringtone persists", func(t *testing.T) {
+		t.Parallel()
+		app := newTestApp(t)
+		org := testutil.CreateTestOrganization(t, app.DB)
+		user := testutil.CreateTestUser(t, app.DB, org.ID,
+			testutil.WithEmail(testutil.UniqueEmail("settings-ringtone")),
+		)
+
+		req := testutil.NewJSONRequest(t, map[string]any{
+			"email_notifications": true,
+			"new_message_alerts":  true,
+			"campaign_updates":    true,
+			"call_ringtone":       "none",
+		})
+		testutil.SetAuthContext(req, org.ID, user.ID)
+
+		require.NoError(t, app.UpdateCurrentUserSettings(req))
+		assert.Equal(t, fasthttp.StatusOK, testutil.GetResponseStatusCode(req))
+
+		var dbUser models.User
+		require.NoError(t, app.DB.Where("id = ?", user.ID).First(&dbUser).Error)
+		assert.Equal(t, "none", dbUser.Settings["call_ringtone"])
+	})
+
+	// Saving the notification toggles from a client that doesn't know about
+	// ringtones must not silently reset the agent's choice.
+	t.Run("omitted call ringtone keeps the current choice", func(t *testing.T) {
+		t.Parallel()
+		app := newTestApp(t)
+		org := testutil.CreateTestOrganization(t, app.DB)
+		user := testutil.CreateTestUser(t, app.DB, org.ID,
+			testutil.WithEmail(testutil.UniqueEmail("settings-ringtone-keep")),
+		)
+
+		first := testutil.NewJSONRequest(t, map[string]any{"call_ringtone": "beep"})
+		testutil.SetAuthContext(first, org.ID, user.ID)
+		require.NoError(t, app.UpdateCurrentUserSettings(first))
+
+		second := testutil.NewJSONRequest(t, map[string]any{"campaign_updates": true})
+		testutil.SetAuthContext(second, org.ID, user.ID)
+		require.NoError(t, app.UpdateCurrentUserSettings(second))
+
+		var dbUser models.User
+		require.NoError(t, app.DB.Where("id = ?", user.ID).First(&dbUser).Error)
+		assert.Equal(t, "beep", dbUser.Settings["call_ringtone"])
+	})
+
+	t.Run("unknown call ringtone is rejected", func(t *testing.T) {
+		t.Parallel()
+		app := newTestApp(t)
+		org := testutil.CreateTestOrganization(t, app.DB)
+		user := testutil.CreateTestUser(t, app.DB, org.ID,
+			testutil.WithEmail(testutil.UniqueEmail("settings-ringtone-bad")),
+		)
+
+		req := testutil.NewJSONRequest(t, map[string]any{"call_ringtone": "airhorn"})
+		testutil.SetAuthContext(req, org.ID, user.ID)
+
+		require.NoError(t, app.UpdateCurrentUserSettings(req))
+		assert.Equal(t, fasthttp.StatusBadRequest, testutil.GetResponseStatusCode(req))
 	})
 
 	t.Run("update overwrites previous settings", func(t *testing.T) {

@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, watch } from 'vue'
+import { startRinging, stopRinging } from '@/lib/ringtone'
 import { callLogsService, ivrFlowsService, callTransfersService, outgoingCallsService, type CallLog, type IVRFlow, type CallTransfer } from '@/services/api'
 import { toast } from 'vue-sonner'
 import { i18n } from '@/i18n'
@@ -27,6 +28,9 @@ export const useCallingStore = defineStore('calling', () => {
   const localStream = ref<MediaStream | null>(null)
   const peerConnection = ref<RTCPeerConnection | null>(null)
   const isOnCall = ref(false)
+  // True from the moment a transfer is accepted until media is connected.
+  // Keeps the call panel on screen across the WebRTC setup gap.
+  const isConnecting = ref(false)
   const callDuration = ref(0)
   const isMuted = ref(false)
   let durationTimer: number | null = null
@@ -176,6 +180,25 @@ export const useCallingStore = defineStore('calling', () => {
     const transfer = waitingTransfers.value.find(t => t.id === id)
     waitingTransfers.value = waitingTransfers.value.filter(t => t.id !== id)
 
+    isConnecting.value = true
+    if (transfer) {
+      activeTransfer.value = { ...transfer, status: 'connecting' }
+    }
+
+    try {
+      await connectTransferMedia(id, transfer)
+    } catch (err) {
+      cleanup()
+      throw err
+    } finally {
+      isConnecting.value = false
+    }
+  }
+
+  // Media setup for an accepted transfer. Split out so acceptTransfer can own
+  // the connecting state around it — this stretch takes seconds (mic prompt,
+  // ICE gathering, /connect round trip) and the panel must stay up throughout.
+  async function connectTransferMedia(id: string, transfer: CallTransfer | undefined) {
     // Get microphone access
     let stream: MediaStream
     try {
@@ -416,7 +439,16 @@ export const useCallingStore = defineStore('calling', () => {
     isOnHold.value = false
   }
 
+  // One rule for the ringtone: it rings while a call is waiting to be answered
+  // and stops the moment nothing is. Covers accepting, rejecting, another agent
+  // taking it, no-answer and termination without a stop call on each path.
+  watch(
+    () => waitingTransfers.value.length,
+    waiting => (waiting > 0 ? startRinging() : stopRinging()),
+  )
+
   function cleanup() {
+    stopRinging()
     if (durationTimer) {
       clearInterval(durationTimer)
       durationTimer = null
@@ -435,6 +467,7 @@ export const useCallingStore = defineStore('calling', () => {
       remoteAudioEl = null
     }
     isOnCall.value = false
+    isConnecting.value = false
     isOnHold.value = false
     activeTransfer.value = null
     outgoingCallLogId.value = null
@@ -554,6 +587,7 @@ export const useCallingStore = defineStore('calling', () => {
     // Call transfers
     waitingTransfers,
     activeTransfer,
+    isConnecting,
     isOnCall,
     callDuration,
     isMuted,

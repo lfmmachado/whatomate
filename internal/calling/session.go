@@ -27,6 +27,11 @@ type CallSession struct {
 	ID             string // WhatsApp call_id
 	OrganizationID uuid.UUID
 	AccountName    string
+	// WAAccount is the decrypted account for this call, captured when the
+	// session is created. Terminating a call needs it long after the
+	// handler-supplied copy has gone out of scope, and reloading it from the
+	// DB here would hand Meta the still-encrypted token.
+	WAAccount      *whatsapp.Account
 	CallerPhone    string
 	ContactID      uuid.UUID
 	CallLogID      uuid.UUID
@@ -167,6 +172,10 @@ func NewManager(cfg *config.CallingConfig, s3Client *storage.S3Client, db *gorm.
 		cfg.PerAgentTimeoutSecs = 15
 	}
 
+	if cfg.StickyRingSecs <= 0 {
+		cfg.StickyRingSecs = 30
+	}
+
 	return &Manager{
 		sessions: make(map[string]*CallSession),
 		log:      log,
@@ -193,6 +202,7 @@ func (m *Manager) HandleIncomingCall(account *models.WhatsAppAccount, contact *m
 		ID:             callLog.WhatsAppCallID,
 		OrganizationID: account.OrganizationID,
 		AccountName:    account.Name,
+		WAAccount:      account.ToWAAccount(),
 		CallerPhone:    contact.PhoneNumber,
 		ContactID:      contact.ID,
 		CallLogID:      callLog.ID,
@@ -221,6 +231,13 @@ func (m *Manager) HandleIncomingCall(account *models.WhatsAppAccount, contact *m
 
 	// Start WebRTC negotiation using the consumer's SDP offer
 	go m.negotiateWebRTC(session, account, sdpOffer)
+}
+
+// RejectIncomingCall declines a ringing call without answering it. Used for a
+// click-to-call call whose originating agent can't take it: the call is never
+// offered to anyone else, so there is no reason to pre-accept it for WebRTC.
+func (m *Manager) RejectIncomingCall(ctx context.Context, account *models.WhatsAppAccount, callID string) {
+	m.rejectCall(ctx, account.ToWAAccount(), callID)
 }
 
 // HandleCallEvent processes a call lifecycle event (in_call, ended, etc.)
@@ -515,19 +532,15 @@ func (m *Manager) terminateCall(session *CallSession, waAccount *whatsapp.Accoun
 	}
 }
 
-// terminateCallBySession looks up the WhatsApp account from the DB and
-// terminates the call. Used when only the session is available.
+// terminateCallBySession terminates the call using the account captured on the
+// session. Used when only the session is available.
 func (m *Manager) terminateCallBySession(session *CallSession) {
-	var account models.WhatsAppAccount
-	if err := m.db.Where("organization_id = ? AND name = ?", session.OrganizationID, session.AccountName).
-		First(&account).Error; err != nil {
-		m.log.Error("Failed to look up account for call termination", "error", err, "call_id", session.ID)
+	if session.WAAccount == nil || session.WAAccount.AccessToken == "" {
+		m.log.Error("No account on session, cannot terminate call",
+			"call_id", session.ID, "account", session.AccountName)
 		return
 	}
-	waAccount := account.ToWAAccount()
-	if waAccount.AccessToken != "" {
-		m.terminateCall(session, waAccount)
-	}
+	m.terminateCall(session, session.WAAccount)
 }
 
 // durationSince calculates seconds elapsed since a given time, returning 0 if

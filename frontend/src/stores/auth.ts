@@ -6,7 +6,10 @@ export interface UserSettings {
   email_notifications?: boolean
   new_message_alerts?: boolean
   campaign_updates?: boolean
+  call_ringtone?: CallRingtone
 }
+
+export type CallRingtone = 'ring' | 'beep' | 'none'
 
 export interface Permission {
   id: string
@@ -71,6 +74,9 @@ export const useAuthStore = defineStore('auth', () => {
     localStorage.removeItem('user')
     localStorage.removeItem('auth_token')
     localStorage.removeItem('refresh_token')
+    // Org override is per-session: leaving it behind makes the next user on this
+    // browser send X-Organization-ID for an org they may not belong to.
+    localStorage.removeItem('selected_organization_id')
   }
 
   /**

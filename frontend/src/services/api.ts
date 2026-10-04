@@ -164,7 +164,7 @@ export const usersService = {
     api.put(`/users/${id}`, data),
   delete: (id: string) => api.delete(`/users/${id}`),
   me: () => api.get('/me'),
-  updateSettings: (data: { email_notifications: boolean; new_message_alerts: boolean; campaign_updates: boolean }) =>
+  updateSettings: (data: { email_notifications: boolean; new_message_alerts: boolean; campaign_updates: boolean; call_ringtone?: string }) =>
     api.put('/me/settings', data),
   changePassword: (data: { current_password: string; new_password: string }) =>
     api.put('/me/password', data),
@@ -578,6 +578,7 @@ export interface MetaAnalyticsResponse {
   account_name: string
   data: MetaAnalyticsData | null
   template_names?: Record<string, string> // meta_template_id -> template name
+  currency?: string // ISO 4217 code the WABA is billed in, from Meta
 }
 
 export const metaAnalyticsService = {
