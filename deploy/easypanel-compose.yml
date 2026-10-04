@@ -96,9 +96,26 @@ services:
     volumes:
       - whatomate-uploads:/app/uploads
       - whatomate-audio:/app/audio
-      # Conteúdo de deploy/config.mount.toml, criado como File Mount no painel.
-      # Só carrega o [[calling.ice_servers]], que não cabe em env var.
-      - /etc/easypanel/projects/whatomate/config.toml:/app/config.toml:ro
+
+    # O app escreve o próprio config.toml ao subir. Isso existe por um motivo
+    # específico: [[calling.ice_servers]] é lista de tabelas e o provider de env
+    # do koanf não consegue montá-la (config.go:210), mas montar um arquivo do
+    # host exigiria acesso SSH ao servidor para mantê-lo. Gerando aqui, o compose
+    # passa a ser a única fonte de verdade — tudo editável pelo painel.
+    entrypoint:
+      - /bin/bash
+      - -c
+      - |
+        cat > /app/config.toml <<'TOML'
+        [app]
+        name = "Whatomate"
+
+        [[calling.ice_servers]]
+        urls = ["turn:172.31.21.234:3478"]
+        secret = "${TURN_SECRET}"
+        credential_ttl = 86400
+        TOML
+        exec ./whatomate server -config /app/config.toml -migrate
 
     healthcheck:
       # A imagem não traz curl nem wget, então /dev/tcp do bash é o que resta.
@@ -127,9 +144,33 @@ services:
     # A razão de existir deste serviço: rede host = zero NAT do Docker no
     # caminho da mídia. É o que o app não podia ter, por precisar do Traefik.
     network_mode: host
-    volumes:
-      - /etc/easypanel/projects/whatomate/turnserver.conf:/etc/coturn/turnserver.conf:ro
-    command: ["-c", "/etc/coturn/turnserver.conf"]
+    # Tudo por linha de comando, sem arquivo montado — mesmo motivo do
+    # entrypoint acima: não depender de arquivo no host.
+    #
+    # A faixa de relay é 10001-10040 de propósito: o security group da EC2
+    # (sg-83e445e6) já libera UDP 10000-10040 desde a tentativa anterior, então
+    # nenhuma regra nova é necessária. A porta de controle 3478 NÃO precisa
+    # estar aberta: só o app, na mesma máquina, fala com ela.
+    #
+    # external-ip mapeia público/privado porque a interface da EC2 só enxerga o
+    # IP privado; sem isso os candidatos de relay anunciariam 172.31.21.234.
+    command:
+      - --listening-port=3478
+      - --fingerprint
+      - --use-auth-secret
+      - --static-auth-secret=${TURN_SECRET}
+      - --realm=chat.mooviin.app
+      - --external-ip=3.93.191.20/172.31.21.234
+      - --min-port=10001
+      - --max-port=10040
+      - --no-tls
+      - --no-dtls
+      - --no-multicast-peers
+      - --no-cli
+      - --stale-nonce=600
+      - --total-quota=100
+      - --log-file=stdout
+      - --simple-log
     deploy:
       resources:
         limits:
