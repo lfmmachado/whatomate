@@ -20,6 +20,9 @@
 services:
   whatomate:
     image: ghcr.io/lfmmachado/whatomate:latest
+    # Sem isto o Docker reaproveita a imagem `latest` já em cache e o deploy do
+    # painel não troca nada — o container segue na versão antiga, em silêncio.
+    pull_policy: always
     restart: unless-stopped
     # `default` é a rede do projeto, por onde se fala com o Redis.
     # `easypanel` é a rede overlay do Traefik: sem ela o proxy resolve o nome do
@@ -110,10 +113,19 @@ services:
         [app]
         name = "Whatomate"
 
+        # O TURN pelo IP privado é para o SERVIDOR (evita o hairpin da AWS).
         [[calling.ice_servers]]
         urls = ["turn:172.31.21.234:3478"]
         secret = "${TURN_SECRET}"
         credential_ttl = 86400
+
+        # O STUN público é para o NAVEGADOR do agente, e é obrigatório: esta
+        # mesma lista é servida ao frontend (outgoing_calls.go:193), que não
+        # alcança o IP privado. Sem um STUN, o navegador só gera candidatos da
+        # LAN, o servidor cria a permissão TURN para o endereço errado e o
+        # coturn descarta a mídia — chamada conecta e fica muda dos dois lados.
+        [[calling.ice_servers]]
+        urls = ["stun:stun.l.google.com:19302"]
         TOML
         exec ./whatomate server -config /app/config.toml -migrate
 

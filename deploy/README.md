@@ -6,36 +6,55 @@ criado no próprio EasyPanel.
 
 ## Estado atual (04/10/2026)
 
-O que já está em produção e o que falta. Esta seção existe para que ninguém
-precise reconstruir o contexto de memória.
+**Chamadas funcionam ponta a ponta**: entra, toca o IVR em português, transfere
+para o agente, toca no navegador, atende e conversa com áudio nos dois sentidos.
+Mensagens idem. Esta seção existe para que ninguém precise reconstruir o
+contexto de memória.
 
-**Funcionando:**
-
-| Peça | Valor / estado |
+| Peça | Valor |
 |---|---|
-| App | `https://chat.mooviin.app` — TLS pelo Traefik do EasyPanel |
-| CI/CD | push em `main` → Test → Deploy → `ghcr.io/lfmmachado/whatomate` |
-| Número oficial | +55 62 98117-3298, verificado e inscrito na Cloud API |
+| App | `https://chat.mooviin.app` |
+| Número oficial | +55 62 98117-3298 |
 | Phone Number ID | `1367400226457038` |
-| WABA de produção | `26223828377295937` (nome de exibição "Mooviin App") |
+| WABA de produção | `26223828377295937` |
 | App Meta | `MooviinApp` — `28243501641947570` |
-| Token | System User `Whatomate` (`61595121330029`), permanente, escopos de messaging + management |
-| Webhooks app↔WABA | assinados; campos `messages`, `calls`, `message_template_status_update` |
-| Mensagens | fluxo completo validado (recebe, aparece no Chat, responde) |
-| Chamadas na Meta | habilitadas no número |
-| Whatomate | org com calling ligado, team `Unique`, fluxo IVR `Main Support` |
+| Token | System User `Whatomate` (`61595121330029`), sem expiração |
+| CI/CD | push em `main` → Test → Deploy → `ghcr.io/lfmmachado/whatomate` |
 
-**Pendente:**
+### Armadilhas que custaram caro, e por quê
 
-- **coturn não implantado.** O compose deste repositório já traz o serviço, mas o
-  painel do EasyPanel ainda roda a versão anterior. Enquanto isso, chamadas
-  falham com ICE conectando e DTLS estourando em 15s — áudio mudo. Aplicar
-  exige: liberar `3478` tcp+udp e `49160-49200` udp no security group, criar os
-  dois arquivos no host com o mesmo segredo, e colar o compose novo.
-- **Sem Elastic IP.** O IP `3.93.191.20` é auto-atribuído e muda em stop/start.
-- **Nome de exibição em análise** na Meta — limita envio ativo, não recebimento.
-- O número de teste `+1 555 630-7921` (WABA `3623352957803820`) continua
-  existindo, mas a conta no Whatomate não aponta mais para ele.
+**Gerente de time não recebe chamada.** A lista de agentes elegíveis filtra
+`role = agent` (assignment/cache.go:47). Um membro com papel `manager` é
+simplesmente ignorado, e o log diz "No agents online for transfer" mesmo com a
+pessoa logada e disponível. Pior: a interface **não permite editar** o papel de
+quem já é membro — é preciso remover e readicionar como Agent.
+
+**Ser admin da organização não substitui o papel no time.** O log mostra
+`has_full_access=true` para o admin, o que engana: são permissões distintas.
+
+**O navegador precisa de um STUN público.** A lista de `ice_servers` é servida
+tanto ao servidor quanto ao frontend (handlers/outgoing_calls.go:193). Com
+apenas o TURN de IP privado, o navegador do agente só gera candidatos da LAN, o
+servidor registra a permissão TURN para o endereço errado, e o coturn descarta a
+mídia — a chamada conecta e fica muda dos dois lados.
+
+**`pull_policy: always` é obrigatório.** Com a tag `latest`, o deploy do painel
+reaproveita a imagem em cache e não troca nada, sem avisar.
+
+**Nó de Transfer sem aresta de saída é terminal.** Quando ninguém atende, a
+ligação morre em silêncio. Com uma aresta no desfecho `no_answer`, o fluxo segue
+— é o que o IVR `Main Support` faz hoje, tocando uma mensagem antes de encerrar.
+
+**Todo deploy derruba as sessões WebSocket** e o frontend não reconecta sozinho.
+O agente precisa recarregar a página depois de um deploy, ou fica invisível para
+o roteamento de chamadas.
+
+### Pendências
+
+- **Sem Elastic IP.** O `3.93.191.20` é auto-atribuído e muda em stop/start;
+  está fixo no `--external-ip` do coturn e no DNS.
+- **Nome de exibição em análise** na Meta.
+- `t2.medium` com créditos de CPU burstable — monitorar em chamadas longas.
 
 ## Arquitetura
 
